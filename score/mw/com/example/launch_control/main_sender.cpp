@@ -1,4 +1,5 @@
 #include "launch_control_interface.h"
+#include "launch_control_management.h"
 
 #include <chrono>
 #include <cstddef>
@@ -14,15 +15,24 @@ int main(int argc, char** argv)
     const std::size_t num_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 5U;
     const auto cycle_time = std::chrono::milliseconds{100};
 
-    const score::mw::com::InstanceSpecifier instance_specifier{"score/cp60/LaunchControl"};
+    // Create InstanceSpecifier via API pubblica
+    auto spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/LaunchControl"});
+    if (!spec_res.has_value())
+    {
+        std::cerr << "Invalid instance specifier: " << spec_res.error() << '\n';
+        return EXIT_FAILURE;
+    }
+    const auto instance_specifier = spec_res.value();
 
-    lc::LaunchControlMessage management{
-        {lc::LaunchControlPhase::Idle,
-         lc::LaunchControlPhase::Armed,
-         lc::LaunchControlPhase::Preload,
-         lc::LaunchControlPhase::Launch,
-         lc::LaunchControlPhase::Complete}};
+    // Costruiamo il manager con la sequenza di fasi desiderata
+    lc::LaunchControlManagement management{{
+        lc::LaunchControlPhase::Idle,
+        lc::LaunchControlPhase::Armed,
+        lc::LaunchControlPhase::Preload,
+        lc::LaunchControlPhase::Launch,
+        lc::LaunchControlPhase::Complete}};
 
+    // Create skeleton (usa l'API generata AsSkeleton)
     auto create_result = lc::LaunchControlSkeleton::Create(instance_specifier);
     if (!create_result.has_value())
     {

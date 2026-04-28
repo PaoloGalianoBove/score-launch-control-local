@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstdint>
 #include <string_view>
 namespace score::mw::com::example::launch_control

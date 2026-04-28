@@ -1,5 +1,46 @@
 {
-  "name": "mw_com_config",
-  "version": 1,
-  "description": "Placeholder configuration for launch_control module"
+  "serviceTypes": [
+    {
+      "serviceTypeName": "/score/launch/LaunchControlMessage",
+      "version": {
+        "major": 1,
+        "minor": 0
+      },
+      "bindings": [
+        {
+          "binding": "SHM",
+          "serviceId": 7000,
+          "events": [
+            {
+              "eventName": "launch_control_message",
+              "eventId": 1
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "serviceInstances": [
+    {
+      "instanceSpecifier": "score/cp60/LaunchControl",
+      "serviceTypeName": "/score/launch/LaunchControlMessage",
+      "version": {
+        "major": 1,
+        "minor": 0
+      },
+      "instances": [
+        {
+          "instanceId": 1,
+          "binding": "SHM",
+          "events": [
+            {
+              "eventName": "launch_control_message",
+              "numberOfSampleSlots": 30,
+              "maxSubscribers": 5
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }
