@@ -32,7 +32,6 @@
         {
           "instanceId": 1,
           "binding": "SHM",
-          "asil-level": "QM",
           "events": [
             {
               "eventName": "launch_control_message",
