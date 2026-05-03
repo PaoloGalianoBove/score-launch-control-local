@@ -1,6 +1,8 @@
 #include "launch_control_interface.h"
 #include "launch_control_management.h"
 
+#include "score/mw/com/runtime.h"
+
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
@@ -10,8 +12,10 @@
 
 namespace lc = score::mw::com::example::launch_control;
 
-int main(int argc, char** argv)
+int main(int argc, const char** argv)
 {
+    score::mw::com::runtime::InitializeRuntime(argc, argv);
+
     const std::size_t num_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 5U;
     const auto cycle_time = std::chrono::milliseconds{100};
 

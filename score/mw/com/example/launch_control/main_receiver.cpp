@@ -1,5 +1,7 @@
 #include "launch_control_interface.h"
 
+#include "score/mw/com/runtime.h"
+
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -7,8 +9,10 @@
 
 namespace lc = score::mw::com::example::launch_control;
 
-int main(int argc, char** argv)
+int main(int argc, const char** argv)
 {
+    score::mw::com::runtime::InitializeRuntime(argc, argv);
+
     // Numero massimo di cicli di ricezione (0 = infinito)
     const std::size_t max_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 0U;
     // Numero atteso di messaggi da ricevere prima di chiudere (0 = non usare)
