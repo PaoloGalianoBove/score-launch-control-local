@@ -58,8 +58,8 @@ int main(int argc, const char** argv)
         auto find_res = lc::LaunchControlProxy::FindService(instance_specifier);
         if (!find_res.has_value())
         {
-            std::cerr << "[Receiver] FindService returned error, retrying in 1s...\n";
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::cerr << "[Receiver] FindService returned error, retrying...\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
         auto found_handles = find_res.value();
@@ -68,8 +68,8 @@ int main(int argc, const char** argv)
             handles = found_handles;
             break;
         }
-        std::cout << "[Receiver] No service found, retrying in 1s...\n";
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::cout << "[Receiver] No service found, retrying...\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     // Crea la proxy usando il primo handle disponibile
