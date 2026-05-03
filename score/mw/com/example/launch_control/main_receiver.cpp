@@ -9,14 +9,37 @@
 
 namespace lc = score::mw::com::example::launch_control;
 
+namespace
+{
+/// Returns the Nth (1-based) positional command-line argument (i.e. arguments that do not start
+/// with '-') parsed as a size_t, or \p default_value when fewer than N positional arguments are
+/// found. 1-based indexing is used so callers can naturally request the "1st", "2nd", etc. arg.
+std::size_t ParseNthPositionalArg(const int argc, const char** argv, const int n, const std::size_t default_value)
+{
+    int positional_count = 0;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i] != nullptr && argv[i][0] != '\0' && argv[i][0] != '-')
+        {
+            ++positional_count;
+            if (positional_count == n)
+            {
+                return static_cast<std::size_t>(std::strtoul(argv[i], nullptr, 10));
+            }
+        }
+    }
+    return default_value;
+}
+}  // namespace
+
 int main(int argc, const char** argv)
 {
     score::mw::com::runtime::InitializeRuntime(argc, argv);
 
     // Numero massimo di cicli di ricezione (0 = infinito)
-    const std::size_t max_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 0U;
+    const std::size_t max_cycles = ParseNthPositionalArg(argc, argv, 1, 0U);
     // Numero atteso di messaggi da ricevere prima di chiudere (0 = non usare)
-    const std::size_t expected_messages = (argc > 2) ? static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)) : 0U;
+    const std::size_t expected_messages = ParseNthPositionalArg(argc, argv, 2, 0U);
 
     auto spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/LaunchControl"});
     if (!spec_res.has_value())

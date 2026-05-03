@@ -12,11 +12,28 @@
 
 namespace lc = score::mw::com::example::launch_control;
 
+namespace
+{
+/// Returns the first positional command-line argument (i.e. the first arg that does not start
+/// with '-') parsed as a size_t, or \p default_value when no such argument is found.
+std::size_t ParseFirstPositionalArg(const int argc, const char** argv, const std::size_t default_value)
+{
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i] != nullptr && argv[i][0] != '\0' && argv[i][0] != '-')
+        {
+            return static_cast<std::size_t>(std::strtoul(argv[i], nullptr, 10));
+        }
+    }
+    return default_value;
+}
+}  // namespace
+
 int main(int argc, const char** argv)
 {
     score::mw::com::runtime::InitializeRuntime(argc, argv);
 
-    const std::size_t num_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 5U;
+    const std::size_t num_cycles = ParseFirstPositionalArg(argc, argv, 5U);
     const auto cycle_time = std::chrono::milliseconds{100};
 
     // Create InstanceSpecifier via API pubblica
