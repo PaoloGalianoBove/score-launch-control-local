@@ -37,6 +37,29 @@ cc_library(
     alwayslink = True,
 )
 
+cc_library(
+    name = "ping_pong_message",
+    hdrs = ["ping_pong_message.h"],
+)
+
+cc_library(
+    name = "ping_pong_interface",
+    hdrs = ["ping_pong_interface.h"],
+    deps = [":ping_pong_message"],
+)
+
+cc_library(
+    name = "ping_pong_gen_cpp",
+    srcs = ["ping_pong_gen.cpp", "ping_pong_rust_wrapper.cpp"],
+    features = COMPILER_WARNING_FEATURES,
+    deps = [
+        ":ping_pong_interface",
+        "//score/mw/com/impl/rust:bridge_macros",
+        "//score/mw/com/impl/rust/com-api/com-api-ffi-lola:registry_bridge_macro_cpp",
+    ],
+    alwayslink = True,
+)
+
 
 cc_binary(
     name = "launch_control_sender_cpp",
@@ -47,6 +70,9 @@ cc_binary(
         ":launch_control_interface",
         ":launch_control_management",
         ":launch_control_message",
+        ":ping_pong_gen_cpp",
+        ":ping_pong_interface",
+        ":ping_pong_message",
         "//score/mw/com",                      # espone score/mw/com/types.h
         "@score_baselibs//score/mw/log",
     ],
@@ -60,6 +86,9 @@ cc_binary(
         ":launch_control_gen_cpp",
         ":launch_control_interface",
         ":launch_control_message",
+        ":ping_pong_gen_cpp",
+        ":ping_pong_interface",
+        ":ping_pong_message",
         "//score/mw/com",                      # espone score/mw/com/types.h
         "@score_baselibs//score/mw/log",
     ],

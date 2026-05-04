@@ -1,7 +1,9 @@
 #include "launch_control_interface.h"
+#include "ping_pong_interface.h"
 
 #include "score/mw/com/runtime.h"
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -40,6 +42,8 @@ int main(int argc, const char** argv)
     const std::size_t max_cycles = ParseNthPositionalArg(argc, argv, 1, 0U);
     // Numero atteso di messaggi da ricevere prima di chiudere (0 = non usare)
     const std::size_t expected_messages = ParseNthPositionalArg(argc, argv, 2, 0U);
+
+    // --- Phase 1: Launch Control message receiving ---
 
     auto spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/LaunchControl"});
     if (!spec_res.has_value())
@@ -191,5 +195,132 @@ int main(int argc, const char** argv)
     }
 
     proxy.launch_control_message_.Unsubscribe();
+
+    // --- Phase 2: Ping-Pong ---
+
+    std::cout << "[Receiver] Starting ping-pong phase...\n";
+
+    // Offer the Pong service (sender subscribes to it)
+    auto pong_spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/PongService"});
+    if (!pong_spec_res.has_value())
+    {
+        std::cerr << "[Receiver] Invalid pong specifier: " << pong_spec_res.error() << '\n';
+        return EXIT_FAILURE;
+    }
+    auto pong_skeleton_res = lc::PingPongSkeleton::Create(pong_spec_res.value());
+    if (!pong_skeleton_res.has_value())
+    {
+        std::cerr << "[Receiver] Unable to construct pong skeleton: " << pong_skeleton_res.error() << '\n';
+        return EXIT_FAILURE;
+    }
+    auto& pong_skeleton = pong_skeleton_res.value();
+
+    if (!pong_skeleton.OfferService().has_value())
+    {
+        std::cerr << "[Receiver] Unable to offer pong service\n";
+        return EXIT_FAILURE;
+    }
+    std::cout << "[Receiver] Pong service offered\n";
+
+    // Find the Ping service offered by the sender
+    auto ping_spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/PingService"});
+    if (!ping_spec_res.has_value())
+    {
+        std::cerr << "[Receiver] Invalid ping specifier: " << ping_spec_res.error() << '\n';
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+
+    std::vector<score::mw::com::HandleType> ping_handles;
+    std::cout << "[Receiver] Waiting for ping service...\n";
+    while (true)
+    {
+        auto find_res = lc::PingPongProxy::FindService(ping_spec_res.value());
+        if (find_res.has_value() && !find_res.value().empty())
+        {
+            ping_handles = find_res.value();
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    auto ping_proxy_res = lc::PingPongProxy::Create(ping_handles[0]);
+    if (!ping_proxy_res.has_value())
+    {
+        std::cerr << "[Receiver] Failed to create ping proxy: " << ping_proxy_res.error() << '\n';
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+    auto ping_proxy = std::move(ping_proxy_res.value());
+
+    if (!ping_proxy.event_.Subscribe(10).has_value())
+    {
+        std::cerr << "[Receiver] Failed to subscribe to ping event\n";
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+    std::cout << "[Receiver] Subscribed to ping event\n";
+
+    // Reflect each incoming ping back as a pong with the same sequence number
+    constexpr auto kPingPongTimeout = std::chrono::milliseconds(5000);
+    auto last_ping_time = std::chrono::steady_clock::now();
+
+    for (;;)
+    {
+        auto avail_res = ping_proxy.event_.GetNumNewSamplesAvailable();
+        if (!avail_res.has_value() || avail_res.value() == 0U)
+        {
+            if (std::chrono::steady_clock::now() - last_ping_time > kPingPongTimeout)
+            {
+                std::cout << "[Receiver] No ping received for " << kPingPongTimeout.count()
+                          << "ms, exiting ping-pong phase.\n";
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            continue;
+        }
+
+        auto get_res = ping_proxy.event_.GetNewSamples(
+            [&pong_skeleton](score::mw::com::SamplePtr<lc::PingPongMessage> sample) {
+                if (!sample)
+                {
+                    return;
+                }
+                const std::uint32_t seq = sample->sequence_number;
+                std::cout << "[Receiver] Ping seq=" << seq << " received, sending pong\n";
+
+                auto alloc_res = pong_skeleton.event_.Allocate();
+                if (!alloc_res.has_value())
+                {
+                    std::cerr << "[Receiver] Failed to allocate pong sample\n";
+                    return;
+                }
+                auto pong_sample = std::move(alloc_res).value();
+                pong_sample->sequence_number = seq;
+
+                if (!pong_skeleton.event_.Send(std::move(pong_sample)).has_value())
+                {
+                    std::cerr << "[Receiver] Failed to send pong seq=" << seq << '\n';
+                }
+            },
+            avail_res.value());
+
+        if (!get_res.has_value())
+        {
+            std::cerr << "[Receiver] GetNewSamples (ping) failed\n";
+            break;
+        }
+
+        if (get_res.value() > 0U)
+        {
+            last_ping_time = std::chrono::steady_clock::now();
+        }
+    }
+
+    ping_proxy.event_.Unsubscribe();
+    pong_skeleton.StopOfferService();
+    std::cout << "[Receiver] Receiver completed.\n";
+
     return EXIT_SUCCESS;
 }
+

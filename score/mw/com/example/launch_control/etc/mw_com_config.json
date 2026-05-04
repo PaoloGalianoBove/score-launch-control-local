@@ -18,6 +18,25 @@
           ]
         }
       ]
+    },
+    {
+      "serviceTypeName": "/score/launch/PingPongMessage",
+      "version": {
+        "major": 1,
+        "minor": 0
+      },
+      "bindings": [
+        {
+          "binding": "SHM",
+          "serviceId": 7001,
+          "events": [
+            {
+              "eventName": "event",
+              "eventId": 1
+            }
+          ]
+        }
+      ]
     }
   ],
   "serviceInstances": [
@@ -38,6 +57,50 @@
               "eventName": "launch_control_message",
               "numberOfSampleSlots": 30,
               "maxSubscribers": 5
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "instanceSpecifier": "score/cp60/PingService",
+      "serviceTypeName": "/score/launch/PingPongMessage",
+      "version": {
+        "major": 1,
+        "minor": 0
+      },
+      "instances": [
+        {
+          "instanceId": 2,
+          "binding": "SHM",
+          "asil-level": "QM",
+          "events": [
+            {
+              "eventName": "event",
+              "numberOfSampleSlots": 10,
+              "maxSubscribers": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "instanceSpecifier": "score/cp60/PongService",
+      "serviceTypeName": "/score/launch/PingPongMessage",
+      "version": {
+        "major": 1,
+        "minor": 0
+      },
+      "instances": [
+        {
+          "instanceId": 3,
+          "binding": "SHM",
+          "asil-level": "QM",
+          "events": [
+            {
+              "eventName": "event",
+              "numberOfSampleSlots": 10,
+              "maxSubscribers": 2
             }
           ]
         }
