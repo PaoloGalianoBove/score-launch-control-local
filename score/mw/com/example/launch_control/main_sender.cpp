@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <thread>
 #include <vector>
@@ -178,6 +179,12 @@ int main(int argc, const char** argv)
     constexpr std::size_t kNumPings = 10000U;
     std::uint64_t total_rtt_us = 0U;
 
+    std::ofstream rtt_log("rtt_log.txt");
+    if (!rtt_log.is_open())
+    {
+        std::cerr << "[Sender] Failed to open rtt_log.txt for writing; RTT logging will be skipped\n";
+    }
+
     for (std::uint32_t seq = 0U; seq < static_cast<std::uint32_t>(kNumPings); ++seq)
     {
         auto alloc_res = ping_skeleton.event_.Allocate();
@@ -229,6 +236,11 @@ int main(int argc, const char** argv)
             std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count();
         total_rtt_us += static_cast<std::uint64_t>(rtt_us);
         std::cout << "[Sender] Pong seq=" << seq << " RTT=" << rtt_us << " us\n";
+
+        if (rtt_log.is_open())
+        {
+            rtt_log << (rtt_us / 1000) << '\n';
+        }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
