@@ -3,12 +3,12 @@
 
 #include "score/mw/com/runtime.h"
 
+#include "score/mw/com/runtime.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "score/mw/com/runtime.h"
 
 namespace lc = score::mw::com::example::launch_control;
 
@@ -38,8 +38,7 @@ std::size_t ParseNthPositionalArg(const int argc, const char** argv, const int n
 int main(int argc, const char** argv)
 {
     score::mw::com::runtime::InitializeRuntime(argc, argv);
-
-    // Numero massimo di cicli di ricezione (0 = infinito)
+    const int ms_wait_for_messages_in_buffer = 250;  // Numero massimo di cicli di ricezione (0 = infinito)
     const std::size_t max_cycles = ParseNthPositionalArg(argc, argv, 1, 0U);
     // Numero atteso di messaggi da ricevere prima di chiudere (0 = non usare)
     const std::size_t expected_messages = ParseNthPositionalArg(argc, argv, 2, 0U);
@@ -47,14 +46,14 @@ int main(int argc, const char** argv)
     // --- Phase 1: Launch Control message receiving ---
 
     auto spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/LaunchControl"});
-    
-    //Verifico che l'instance specifier sia valido, altrimenti esco con errore (non ha senso continuare se non possiamo identificare il servizio da cercare)
+
+    // Verifico che l'instance specifier sia valido, altrimenti esco con errore (non ha senso continuare se non possiamo
+    // identificare il servizio da cercare)
     if (!spec_res.has_value())
     {
         std::cerr << "[Receiver] Invalid instance specifier: " << spec_res.error() << '\n';
         return EXIT_FAILURE;
     }
-
 
     const auto& instance_specifier = spec_res.value();
 
@@ -118,11 +117,14 @@ int main(int argc, const char** argv)
         const std::size_t available = avail_res.value();
         if (available == 0U)
         {
-            std::this_thread::sleep_for(std::chrono::milliseconds(ms_wait_for_messages_in_buffer)); //In pratica sto cercando di non uccidere la CPU e leggo i messaggi NEL BUFFER (quindi dal mw) ogni 250ms, se non ci sono messaggi aspetto e riprovo
+            std::this_thread::sleep_for(std::chrono::milliseconds(
+                ms_wait_for_messages_in_buffer));  // In pratica sto cercando di non uccidere la CPU e leggo i messaggi
+                                                   // NEL BUFFER (quindi dal mw) ogni 250ms, se non ci sono messaggi
+                                                   // aspetto e riprovo
         }
         else
         {
-            const std::size_t to_drain = available; // drain everything the API reports
+            const std::size_t to_drain = available;  // drain everything the API reports
 
             // Collect samples into a temporary buffer so we can sort by sequence_number
             struct RecEntry
@@ -138,8 +140,9 @@ int main(int argc, const char** argv)
                 [&buffer](score::mw::com::SamplePtr<lc::LaunchControlMessage> sample) {
                     if (sample)
                     {
-                        buffer.push_back(RecEntry{sample->sequence_number, static_cast<const void*>(sample.get()),
-                                                   std::string(lc::ToString(sample->phase))});
+                        buffer.push_back(RecEntry{sample->sequence_number,
+                                                  static_cast<const void*>(sample.get()),
+                                                  std::string(lc::ToString(sample->phase))});
                     }
                 },
                 to_drain);
@@ -160,8 +163,8 @@ int main(int argc, const char** argv)
 
                 for (const auto& elements : buffer)
                 {
-                    std::cout << "[Receiver] ptr=" << elements.ptr << " seq=" << elements.seq << " phase=" << elements.phase_str
-                              << '\n';
+                    std::cout << "[Receiver] ptr=" << elements.ptr << " seq=" << elements.seq
+                              << " phase=" << elements.phase_str << '\n';
                 }
 
                 total_received += received_count;
@@ -328,4 +331,3 @@ int main(int argc, const char** argv)
 
     return EXIT_SUCCESS;
 }
-

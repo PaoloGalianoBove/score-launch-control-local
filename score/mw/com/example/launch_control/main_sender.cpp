@@ -175,7 +175,7 @@ int main(int argc, const char** argv)
     }
 
     // Ping-pong loop: send a ping, wait for the matching pong, measure RTT
-    constexpr std::size_t kNumPings = 5U;
+    constexpr std::size_t kNumPings = 10000U;
     std::uint64_t total_rtt_us = 0U;
 
     for (std::uint32_t seq = 0U; seq < static_cast<std::uint32_t>(kNumPings); ++seq)
