@@ -1,5 +1,9 @@
 #include "launch_control_interface.h"
+#include "ping_pong_interface.h"
 
+#include "score/mw/com/runtime.h"
+
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -8,18 +12,40 @@
 
 namespace lc = score::mw::com::example::launch_control;
 
-auto main(int argc, const char** argv) -> int
+namespace
+{
+/// Returns the Nth (1-based) positional command-line argument (i.e. arguments that do not start
+/// with '-') parsed as a size_t, or \p default_value when fewer than N positional arguments are
+/// found. 1-based indexing is used so callers can naturally request the "1st", "2nd", etc. arg.
+std::size_t ParseNthPositionalArg(const int argc, const char** argv, const int n, const std::size_t default_value)
+{
+    int positional_count = 0;
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i] != nullptr && argv[i][0] != '\0' && argv[i][0] != '-')
+        {
+            ++positional_count;
+            if (positional_count == n)
+            {
+                return static_cast<std::size_t>(std::strtoul(argv[i], nullptr, 10));
+            }
+        }
+    }
+    return default_value;
+}
+}  // namespace
+
+int main(int argc, const char** argv)
 {
     score::mw::com::runtime::InitializeRuntime(argc, argv);
+
     // Numero massimo di cicli di ricezione (0 = infinito)
-    const std::size_t max_cycles = (argc > 1) ? static_cast<std::size_t>(std::strtoul(argv[1], nullptr, 10)) : 0U;
+    const std::size_t max_cycles = ParseNthPositionalArg(argc, argv, 1, 0U);
     // Numero atteso di messaggi da ricevere prima di chiudere (0 = non usare)
-    const std::size_t expected_messages = (argc > 2) ? static_cast<std::size_t>(std::strtoul(argv[2], nullptr, 10)) : 0U;
-    // Tempo di attesa tra i tentativi di discovery se il servizio non è ancora disponibile
-    const int ms_wait_for_service_aval = 500;
-    // Tempo di attesa tra i tentativi di lettura dei messaggi se il buffer è vuoto (per evitare busy wait)
-    const int ms_wait_for_messages_in_buffer = 250;
-    //Creo l'istanceSpecifier per la ricerca del servizio (usando l'API pubblica) specificata in mw_com_config.json
+    const std::size_t expected_messages = ParseNthPositionalArg(argc, argv, 2, 0U);
+
+    // --- Phase 1: Launch Control message receiving ---
+
     auto spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/LaunchControl"});
     
     //Verifico che l'instance specifier sia valido, altrimenti esco con errore (non ha senso continuare se non possiamo identificare il servizio da cercare)
@@ -41,8 +67,8 @@ auto main(int argc, const char** argv) -> int
         auto find_res = lc::LaunchControlProxy::FindService(instance_specifier);
         if (!find_res.has_value())
         {
-            std::cerr << "[Receiver] FindService returned error, retrying in 1s...\n";
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+            std::cerr << "[Receiver] FindService returned error, retrying...\n";
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
             continue;
         }
         const auto& found_handles = find_res.value();
@@ -51,9 +77,8 @@ auto main(int argc, const char** argv) -> int
             handles = found_handles;
             break;
         }
-        
-        std::cout << "[Receiver] No service found, retrying in " << ms_wait_for_service_aval << " ms...\n";
-        std::this_thread::sleep_for(std::chrono::milliseconds(ms_wait_for_service_aval)); //Controllo ogni mezzo secondo se il servizio è disponibile, per non uccidere la CPU
+        std::cout << "[Receiver] No service found, retrying...\n";
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     // Crea la proxy usando il primo handle disponibile
@@ -175,5 +200,132 @@ auto main(int argc, const char** argv) -> int
     }
 
     proxy.launch_control_message_.Unsubscribe();
+
+    // --- Phase 2: Ping-Pong ---
+
+    std::cout << "[Receiver] Starting ping-pong phase...\n";
+
+    // Offer the Pong service (sender subscribes to it)
+    auto pong_spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/PongService"});
+    if (!pong_spec_res.has_value())
+    {
+        std::cerr << "[Receiver] Invalid pong specifier: " << pong_spec_res.error() << '\n';
+        return EXIT_FAILURE;
+    }
+    auto pong_skeleton_res = lc::PingPongSkeleton::Create(pong_spec_res.value());
+    if (!pong_skeleton_res.has_value())
+    {
+        std::cerr << "[Receiver] Unable to construct pong skeleton: " << pong_skeleton_res.error() << '\n';
+        return EXIT_FAILURE;
+    }
+    auto& pong_skeleton = pong_skeleton_res.value();
+
+    if (!pong_skeleton.OfferService().has_value())
+    {
+        std::cerr << "[Receiver] Unable to offer pong service\n";
+        return EXIT_FAILURE;
+    }
+    std::cout << "[Receiver] Pong service offered\n";
+
+    // Find the Ping service offered by the sender
+    auto ping_spec_res = score::mw::com::InstanceSpecifier::Create(std::string{"score/cp60/PingService"});
+    if (!ping_spec_res.has_value())
+    {
+        std::cerr << "[Receiver] Invalid ping specifier: " << ping_spec_res.error() << '\n';
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+
+    std::vector<score::mw::com::HandleType> ping_handles;
+    std::cout << "[Receiver] Waiting for ping service...\n";
+    while (true)
+    {
+        auto find_res = lc::PingPongProxy::FindService(ping_spec_res.value());
+        if (find_res.has_value() && !find_res.value().empty())
+        {
+            ping_handles = find_res.value();
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+
+    auto ping_proxy_res = lc::PingPongProxy::Create(ping_handles[0]);
+    if (!ping_proxy_res.has_value())
+    {
+        std::cerr << "[Receiver] Failed to create ping proxy: " << ping_proxy_res.error() << '\n';
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+    auto ping_proxy = std::move(ping_proxy_res.value());
+
+    if (!ping_proxy.event_.Subscribe(10).has_value())
+    {
+        std::cerr << "[Receiver] Failed to subscribe to ping event\n";
+        pong_skeleton.StopOfferService();
+        return EXIT_FAILURE;
+    }
+    std::cout << "[Receiver] Subscribed to ping event\n";
+
+    // Reflect each incoming ping back as a pong with the same sequence number
+    constexpr auto kPingPongTimeout = std::chrono::milliseconds(5000);
+    auto last_ping_time = std::chrono::steady_clock::now();
+
+    for (;;)
+    {
+        auto avail_res = ping_proxy.event_.GetNumNewSamplesAvailable();
+        if (!avail_res.has_value() || avail_res.value() == 0U)
+        {
+            if (std::chrono::steady_clock::now() - last_ping_time > kPingPongTimeout)
+            {
+                std::cout << "[Receiver] No ping received for " << kPingPongTimeout.count()
+                          << "ms, exiting ping-pong phase.\n";
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+            continue;
+        }
+
+        auto get_res = ping_proxy.event_.GetNewSamples(
+            [&pong_skeleton](score::mw::com::SamplePtr<lc::PingPongMessage> sample) {
+                if (!sample)
+                {
+                    return;
+                }
+                const std::uint32_t seq = sample->sequence_number;
+                std::cout << "[Receiver] Ping seq=" << seq << " received, sending pong\n";
+
+                auto alloc_res = pong_skeleton.event_.Allocate();
+                if (!alloc_res.has_value())
+                {
+                    std::cerr << "[Receiver] Failed to allocate pong sample\n";
+                    return;
+                }
+                auto pong_sample = std::move(alloc_res).value();
+                pong_sample->sequence_number = seq;
+
+                if (!pong_skeleton.event_.Send(std::move(pong_sample)).has_value())
+                {
+                    std::cerr << "[Receiver] Failed to send pong seq=" << seq << '\n';
+                }
+            },
+            avail_res.value());
+
+        if (!get_res.has_value())
+        {
+            std::cerr << "[Receiver] GetNewSamples (ping) failed\n";
+            break;
+        }
+
+        if (get_res.value() > 0U)
+        {
+            last_ping_time = std::chrono::steady_clock::now();
+        }
+    }
+
+    ping_proxy.event_.Unsubscribe();
+    pong_skeleton.StopOfferService();
+    std::cout << "[Receiver] Receiver completed.\n";
+
     return EXIT_SUCCESS;
 }
+
