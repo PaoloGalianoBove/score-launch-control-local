@@ -8,9 +8,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdlib>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -181,19 +181,16 @@ int main(int argc, const char** argv)
     std::uint64_t total_rtt_us = 0U;
 
     const char* const home_dir = std::getenv("HOME");  // NOLINT(concurrency-mt-unsafe)
-    const std::filesystem::path rtt_log_dir =
-        (home_dir != nullptr) ? std::filesystem::path(home_dir) / "Documents" : std::filesystem::path(".");
-    std::error_code ec;
-    std::filesystem::create_directories(rtt_log_dir, ec);
-    if (ec)
-    {
-        std::cerr << "[Sender] Warning: could not create directory " << rtt_log_dir << ": " << ec.message() << '\n';
-    }
-    const std::filesystem::path rtt_log_path = rtt_log_dir / "rtt_log.txt";
+    const std::string rtt_log_path =
+        (home_dir != nullptr) ? (std::string(home_dir) + "/rtt_log.txt") : "/tmp/rtt_log.txt";
     std::ofstream rtt_log(rtt_log_path);
     if (!rtt_log.is_open())
     {
         std::cerr << "[Sender] Failed to open " << rtt_log_path << " for writing; RTT logging will be skipped\n";
+    }
+    else
+    {
+        std::cout << "[Sender] RTT log will be written to: " << rtt_log_path << '\n';
     }
 
     for (std::uint32_t seq = 0U; seq < static_cast<std::uint32_t>(kNumPings); ++seq)
