@@ -179,10 +179,14 @@ int main(int argc, const char** argv)
     constexpr std::size_t kNumPings = 10000U;
     std::uint64_t total_rtt_us = 0U;
 
-    std::ofstream rtt_log("rtt_log.txt");
+    const char* const home_dir = std::getenv("HOME");  // NOLINT(concurrency-mt-unsafe)
+    const std::string rtt_log_path = (home_dir != nullptr)
+                                         ? (std::string(home_dir) + "/Documents/rtt_log.txt")
+                                         : "rtt_log.txt";
+    std::ofstream rtt_log(rtt_log_path);
     if (!rtt_log.is_open())
     {
-        std::cerr << "[Sender] Failed to open rtt_log.txt for writing; RTT logging will be skipped\n";
+        std::cerr << "[Sender] Failed to open " << rtt_log_path << " for writing; RTT logging will be skipped\n";
     }
 
     for (std::uint32_t seq = 0U; seq < static_cast<std::uint32_t>(kNumPings); ++seq)
